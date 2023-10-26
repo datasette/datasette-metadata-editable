@@ -1,0 +1,66 @@
+
+{% extends "base.html" %}
+
+{% block title %}yo{% endblock %}
+
+{% block extra_head %}
+
+<script id="datasette-comments-data" type="application/json"></script>
+
+
+{% endblock %}
+
+{% block content %}
+
+<h1>Editing
+  {% if   target_type == "index" %}  Root-level
+  {% elif target_type == "database" %}  <a href="#TODO">{{database}}</a>
+  {% elif target_type == "table" %}  <a href="#TODO">{{database}}/{{table}}</a>
+  {% elif target_type == "index" %}  <a href="#TODO">{{database}}/{{table}}/{{column}}</a>
+{% endif %}
+Metadata </h1>
+
+<form action="/-/datasette-metadata-editable/api/edit" method="post">
+
+  {% if target_type == "database" %}
+  <div>
+    <label for="title">Title</label><br/>
+    <input type="text" id="title" name="title" value="{{defaults.get("title") or ""}}">
+  </div>
+  {% endif %}
+
+  <div>
+    <label for="description_html">Description</label><br/>
+    <textarea id="description_html" name="description_html" cols="80">{{defaults.get("description") or ""}}</textarea>
+  </div>
+
+  <div>
+    <label for="license">License</label><br/>
+    <input type="text" id="license" name="license" value="{{defaults.get("license") or ""}}"></input>
+  </div>
+
+  <div>
+    <label for="source">Source</label><br/>
+    <input type="text" id="source" name="source" value="{{defaults.get("source") or ""}}"></input>
+  </div>
+
+
+  <input type="hidden" name="target_type" value="{{target_type}}">
+
+  {% if target_type == "database" or target_type == "table" or target_type == "column"%}
+  <input type="hidden" name="_database" value="{{database}}">
+  {% endif %}
+  {% if target_type == "table" or target_type == "column"%}
+  <input type="hidden" name="_table" value="{{table}}">
+  {% endif %}
+  {% if target_type == "column"%}
+  <input type="hidden" name="_column" value="{{column}}">
+  {% endif %}
+
+  <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+
+  <br/>
+  <input type="submit" value="Submit">
+</form>
+
+{% endblock %}
