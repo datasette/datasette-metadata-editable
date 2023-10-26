@@ -72,9 +72,11 @@ async def insert_entry(
       """,
         {
             "target_type": target_type,
-            "target_database": target_database,
-            "target_table": target_table,
-            "target_column": target_column,
+            # Empty strings are added here because UNIQUE indexes in SQLite see NULLs
+            # as distinct from one-another. So, use an empty string to enforce uniqueness
+            "target_database": target_database or "",
+            "target_table": target_table or "",
+            "target_column": target_column or "",
             "key": key,
             "value": value,
         },

@@ -22,7 +22,7 @@ Metadata </h1>
 
 <form action="/-/datasette-metadata-editable/api/edit" method="post">
 
-  {% if target_type == "database" %}
+  {% if target_type == "index" %}
   <div>
     <label for="title">Title</label><br/>
     <input type="text" id="title" name="title" value="{{defaults.get("title") or ""}}">

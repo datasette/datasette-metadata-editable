@@ -1,0 +1,25 @@
+# serializer version: 1
+# name: test_basic[entry rows initial]
+  list([
+    dict({
+      'key': 'title',
+      'target_column': '',
+      'target_database': '',
+      'target_table': '',
+      'target_type': 'index',
+      'value': 'yo',
+    }),
+  ])
+# ---
+# name: test_basic[entry rows updated]
+  list([
+    dict({
+      'key': 'title',
+      'target_column': '',
+      'target_database': '',
+      'target_table': '',
+      'target_type': 'index',
+      'value': 'yo2',
+    }),
+  ])
+# ---
