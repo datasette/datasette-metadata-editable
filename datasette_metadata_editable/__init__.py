@@ -5,6 +5,7 @@ import markdown2
 import nh3
 from datasette import Response, hookimpl
 from sqlite_utils import Database
+from typing import Optional
 
 from .internal_migrations import internal_migrations
 
@@ -36,11 +37,11 @@ async def insert_entry(
     db,
     cache,
     target_type: str,
-    target_database: str | None,
-    target_table: str | None,
-    target_column: str | None,
+    target_database: Optional[str],
+    target_table: Optional[str],
+    target_column: Optional[str],
     key: str,
-    value: str | None,
+    value: Optional[str],
 ):
     if target_type == "index":
         cache[key] = md_to_html(value) if key.endswith("_html") else value
