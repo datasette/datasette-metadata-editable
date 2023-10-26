@@ -178,7 +178,7 @@ async def startup(datasette):
 
     await datasette.get_internal_database().execute_write_fn(migrate)
 
-    for row in datasette.get_internal_database().execute(
+    for row in await datasette.get_internal_database().execute(
         "select * from datasette_metadata_editable_entries"
     ):
         if row["target_type"] == "index":
