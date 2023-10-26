@@ -164,29 +164,32 @@ class Routes:
 
 
 @hookimpl
-async def startup(datasette):
-    # UPSERT was added in SQLite 3.24.0 https://www.sqlite.org/changes.html#version_3_24_0
-    # For now, enforce clients have a supported version
-    if sqlite3.sqlite_version_info[1] < 24:
-        raise Exception(
-            f"SQLite version >=3.24 is required, has {sqlite3.sqlite_version}"
-        )
+def startup(datasette):
+    async def inner():
+        # UPSERT was added in SQLite 3.24.0 https://www.sqlite.org/changes.html#version_3_24_0
+        # For now, enforce clients have a supported version
+        if sqlite3.sqlite_version_info[1] < 24:
+            raise Exception(
+                f"SQLite version >=3.24 is required, has {sqlite3.sqlite_version}"
+            )
 
-    def migrate(connection):
-        db = Database(connection)
-        internal_migrations.apply(db)
+        def migrate(connection):
+            db = Database(connection)
+            internal_migrations.apply(db)
 
-    await datasette.get_internal_database().execute_write_fn(migrate, block=True)
-    try:
-        for row in await datasette.get_internal_database().execute(
-            "select * from datasette_metadata_editable_entries"
-        ):
-            if row["target_type"] == "index":
-                cache[row["key"]] = row["value"]
-    except Exception as e:
-        print(
-            f"Exception while sourcing from datasette_metadata_editable_entries at startup: {e}"
-        )
+        await datasette.get_internal_database().execute_write_fn(migrate, block=True)
+        try:
+            for row in await datasette.get_internal_database().execute(
+                "select * from datasette_metadata_editable_entries"
+            ):
+                if row["target_type"] == "index":
+                    cache[row["key"]] = row["value"]
+        except Exception as e:
+            print(
+                f"Exception while sourcing from datasette_metadata_editable_entries at startup: {e}"
+            )
+
+    return inner
 
 
 @hookimpl
