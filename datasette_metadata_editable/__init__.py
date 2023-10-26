@@ -176,7 +176,7 @@ async def startup(datasette):
         db = Database(connection)
         internal_migrations.apply(db)
 
-    await datasette.get_internal_database().execute_write_fn(migrate)
+    await datasette.get_internal_database().execute_write_fn(migrate, block=True)
 
     for row in await datasette.get_internal_database().execute(
         "select * from datasette_metadata_editable_entries"
