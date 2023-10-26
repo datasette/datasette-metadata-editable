@@ -176,11 +176,13 @@ async def startup(datasette):
         db = Database(connection)
         internal_migrations.apply(db)
 
-        for row in db.execute("select * from datasette_metadata_editable_entries"):
-            if row["target_type"] == "index":
-                cache[row["key"]] = row["value"]
-
     await datasette.get_internal_database().execute_write_fn(migrate)
+
+    for row in datasette.get_internal_database().execute(
+        "select * from datasette_metadata_editable_entries"
+    ):
+        if row["target_type"] == "index":
+            cache[row["key"]] = row["value"]
 
 
 @hookimpl
