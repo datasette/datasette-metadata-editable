@@ -13,7 +13,12 @@ async def test_plugin_is_installed():
 
 @pytest.mark.asyncio
 async def test_basic(snapshot):
-    datasette = Datasette(memory=True)
+    datasette = Datasette(
+        memory=True,
+        metadata={
+            "permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}
+        },
+    )
     assert datasette.metadata("title") is None
 
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
@@ -25,6 +30,7 @@ async def test_basic(snapshot):
 
     await datasette.client.post(
         "/-/datasette-metadata-editable/api/edit",
+        cookies=cookies,
         data={"csrftoken": csrftoken, "target_type": "index", "title": "yo"},
     )
 
@@ -43,6 +49,7 @@ async def test_basic(snapshot):
 
     await datasette.client.post(
         "/-/datasette-metadata-editable/api/edit",
+        cookies=cookies,
         data={"csrftoken": csrftoken, "target_type": "index", "title": "yo2"},
     )
     assert datasette.metadata("title") == "yo2"
