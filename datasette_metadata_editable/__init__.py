@@ -3,13 +3,33 @@ import sqlite3
 
 import markdown2
 import nh3
-from datasette import Response, hookimpl
+from datasette import Response, hookimpl, Permission, Forbidden
 from sqlite_utils import Database
 from typing import Optional
 
 from .internal_migrations import internal_migrations
+from functools import wraps
+
+PERMISSION_EDIT_METADATA = "datasette-metadata-editable-edit"
 
 cache = {}
+
+
+# decorator for routes, to ensure the proper permissions are checked
+def check_permission():
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(scope, receive, datasette, request):
+            result = await datasette.permission_allowed(
+                request.actor, PERMISSION_EDIT_METADATA, default=False
+            )
+            if not result:
+                raise Forbidden("Permission denied for datasette-comments")
+            return await func(scope, receive, datasette, request)
+
+        return wrapper
+
+    return decorator
 
 
 def md_to_html(md: str):
@@ -84,6 +104,7 @@ async def insert_entry(
 
 
 class Routes:
+    @check_permission()
     async def edit_page(scope, receive, datasette, request):
         db = request.args.get("db")
         table = request.args.get("table")
@@ -125,6 +146,7 @@ class Routes:
             )
         )
 
+    @check_permission()
     async def api_edit(scope, receive, datasette, request):
         assert request.method == "POST"
         data = await request.post_vars()
@@ -194,6 +216,20 @@ def startup(datasette):
 
 
 @hookimpl
+def register_permissions(datasette):
+    return [
+        Permission(
+            name=PERMISSION_EDIT_METADATA,
+            abbr=None,
+            description="Ability to edit metadata",
+            takes_database=False,
+            takes_resource=False,
+            default=False,
+        ),
+    ]
+
+
+@hookimpl
 def get_metadata(datasette, key, database, table):
     return cache
 
@@ -210,12 +246,12 @@ def register_routes():
 async def extra_body_script(
     template, database, table, columns, view_name, request, datasette
 ):
-    if view_name in ("index", "database", "table"):
+    if not request or not await datasette.permission_allowed(
+        request.actor, PERMISSION_EDIT_METADATA, default=False
+    ):
+        return ""
+    if view_name == "index":
         url = "/-/datasette-metadata-editable/edit?"
-        if view_name in ["database", "table"]:
-            url += f"&db={database}"
-        if view_name in ["table"]:
-            url += f"&table={table}"
         return f"""
           const editMetadata = document.createElement("a")
           editMetadata.textContent = "Edit metadata"
@@ -238,3 +274,41 @@ def extra_js_urls(template, database, table, columns, view_name, request, datase
                 "/-/static-plugins/datasette-metadata-editable/plugin.js"
             )
         ]
+
+
+@hookimpl
+def database_actions(datasette, actor, database):
+    async def inner():
+        if not await datasette.permission_allowed(
+            actor, PERMISSION_EDIT_METADATA, default=False
+        ):
+            return []
+        return [
+            {
+                "href": datasette.urls.path(
+                    f"/-/datasette-metadata-editable/edit?db={database}"
+                ),
+                "label": "Edit database metadata",
+            }
+        ]
+
+    return inner
+
+
+@hookimpl
+def table_actions(datasette, actor, database, table):
+    async def inner():
+        if not await datasette.permission_allowed(
+            actor, PERMISSION_EDIT_METADATA, default=False
+        ):
+            return []
+        return [
+            {
+                "href": datasette.urls.path(
+                    f"/-/datasette-metadata-editable/edit?db={database}&table={table}"
+                ),
+                "label": "Edit table metadata",
+            }
+        ]
+
+    return inner

@@ -1,0 +1,3 @@
+permissions:
+  datasette-metadata-editable-edit:
+    id: ["root"]
