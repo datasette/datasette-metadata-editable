@@ -177,12 +177,16 @@ async def startup(datasette):
         internal_migrations.apply(db)
 
     await datasette.get_internal_database().execute_write_fn(migrate, block=True)
-
-    for row in await datasette.get_internal_database().execute(
-        "select * from datasette_metadata_editable_entries"
-    ):
-        if row["target_type"] == "index":
-            cache[row["key"]] = row["value"]
+    try:
+        for row in await datasette.get_internal_database().execute(
+            "select * from datasette_metadata_editable_entries"
+        ):
+            if row["target_type"] == "index":
+                cache[row["key"]] = row["value"]
+    except Exception as e:
+        print(
+            f"Exception while sourcing from datasette_metadata_editable_entries at startup: {e}"
+        )
 
 
 @hookimpl
