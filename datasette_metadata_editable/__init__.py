@@ -174,8 +174,9 @@ def startup(datasette):
             )
 
         def migrate(connection):
-            db = Database(connection)
-            internal_migrations.apply(db)
+            with connection:
+                db = Database(connection)
+                internal_migrations.apply(db)
 
         await datasette.get_internal_database().execute_write_fn(migrate, block=True)
         try:
