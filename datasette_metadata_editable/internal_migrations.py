@@ -8,5 +8,5 @@ SCHEMA = (Path(__file__).parent / "schema.sql").read_text()
 
 
 @internal_migrations()
-def m001_initial(db: Database):
+def m001_initialize_datasette_metadata_editable(db: Database):
     db.executescript(SCHEMA)
