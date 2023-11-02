@@ -24,7 +24,9 @@ def check_permission():
                 request.actor, PERMISSION_EDIT_METADATA, default=False
             )
             if not result:
-                raise Forbidden("Permission denied for datasette-comments")
+                raise Forbidden(
+                    "Permission denied for {}".format(PERMISSION_EDIT_METADATA)
+                )
             return await func(scope, receive, datasette, request)
 
         return wrapper
