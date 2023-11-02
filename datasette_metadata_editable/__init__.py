@@ -209,6 +209,14 @@ def startup(datasette):
             ):
                 if row["target_type"] == "index":
                     cache[row["key"]] = row["value"]
+                elif row["target_type"] == "table":
+                    cache.setdefault("databases", {}).setdefault(
+                        row["target_database"]
+                    ).setdefault("tables", {}).setdefault(row["target_table"])[
+                        row["key"]
+                    ] = row["value"]
+                    cache[row["key"]] = row["value"]
+                # TODO: database, column
         except Exception as e:
             print(
                 f"Exception while sourcing from datasette_metadata_editable_entries at startup: {e}"
