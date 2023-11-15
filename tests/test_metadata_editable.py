@@ -1,5 +1,7 @@
 from datasette.app import Datasette
+from datasette_metadata_editable.internal_migrations import internal_migrations
 import pytest
+import sqlite_utils
 
 
 @pytest.mark.asyncio
@@ -119,3 +121,43 @@ async def test_edit_table():
         "about": None,
         "about_url": None,
     }
+
+
+@pytest.mark.asyncio
+async def test_metadata_does_not_cause_500_errors(tmpdir):
+    # The following records used to cause a 500 error
+    # https://github.com/datasette/datasette-metadata-editable/issues/2
+    bad_rows = """
+    INSERT INTO "datasette_metadata_editable_entries"
+        (target_type, target_database, target_table, target_column, key, value)
+    VALUES
+        ('table','content','pypi_releases','','description_html','table');
+    INSERT INTO "datasette_metadata_editable_entries"
+        (target_type, target_database, target_table, target_column, key, value)
+    VALUES
+        ('table','content','pypi_releases','','source','');
+    INSERT INTO "datasette_metadata_editable_entries"
+        (target_type, target_database, target_table, target_column, key, value)
+    VALUES
+        ('table','content','pypi_releases','','license','');
+    """
+    internal = str(tmpdir / "internal.db")
+    content = str(tmpdir / "content.db")
+    content_db = sqlite_utils.Database(content)
+    content_db["pypi_releases"].create({"name": str, "version": str})
+
+    internal_db = sqlite_utils.Database(internal)
+    # Run migrations to create tables
+    internal_migrations.apply(internal_db)
+
+    internal_db.executescript(bad_rows)
+
+    datasette = Datasette(
+        [content],
+        internal=internal,
+    )
+
+    # Server should not 500
+    for path in ("/", "/content"):
+        response = await datasette.client.get(path)
+        assert response.status_code == 200

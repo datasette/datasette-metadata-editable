@@ -211,10 +211,12 @@ def startup(datasette):
                     cache[row["key"]] = row["value"]
                 elif row["target_type"] == "table":
                     cache.setdefault("databases", {}).setdefault(
-                        row["target_database"]
-                    ).setdefault("tables", {}).setdefault(row["target_table"])[
+                        row["target_database"], {}
+                    ).setdefault("tables", {}).setdefault(row["target_table"], {})[
                         row["key"]
-                    ] = row["value"]
+                    ] = row[
+                        "value"
+                    ]
                     cache[row["key"]] = row["value"]
                 # TODO: database, column
         except Exception as e:
