@@ -161,3 +161,70 @@ async def test_metadata_does_not_cause_500_errors(tmpdir):
     for path in ("/", "/content"):
         response = await datasette.client.get(path)
         assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_metadata_survives_server_restart(tmpdir):
+    internal = str(tmpdir / "internal.db")
+    one = str(tmpdir / "one.db")
+    two = str(tmpdir / "two.db")
+    for path in (internal, one, two):
+        sqlite_utils.Database(path).vacuum()
+    datasette = Datasette(
+        [one, two],
+        metadata={
+            "permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}
+        },
+        internal=internal,
+    )
+    db = datasette.get_database("one")
+    await db.execute_write("create table t(id integer primary key)")
+    cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
+    response = await datasette.client.get(
+        "/-/datasette-metadata-editable/edit", cookies=cookies
+    )
+    csrftoken = response.cookies["ds_csrftoken"]
+    cookies["ds_csrftoken"] = csrftoken
+
+    response2 = await datasette.client.post(
+        "/-/datasette-metadata-editable/api/edit",
+        cookies=cookies,
+        data={
+            "csrftoken": csrftoken,
+            "target_type": "database",
+            "_database": "one",
+            "description_html": "DESCRIBED!",
+        },
+    )
+    assert response2.status_code == 302
+
+    # Check the metadata was stored
+    sqlite_db = sqlite_utils.Database(internal)
+    assert list(
+        sqlite_db.query(
+            "select * from datasette_metadata_editable_entries where value != ''"
+        )
+    ) == [
+        {
+            "target_type": "database",
+            "target_database": "one",
+            "target_table": "",
+            "target_column": "",
+            "key": "description_html",
+            "value": "DESCRIBED!",
+        }
+    ]
+
+    # Now restart the server
+    datasette2 = Datasette(
+        [one, two],
+        metadata={
+            "permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}
+        },
+        internal=internal,
+        pdb=True,
+    )
+    # Metadata should have been updated and server should not have crashed
+    root_response = await datasette2.client.get("/")
+    assert root_response.status_code == 200
+    assert "DESCRIBED" in (await datasette2.client.get("/one")).text
