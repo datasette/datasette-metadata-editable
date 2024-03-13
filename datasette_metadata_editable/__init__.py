@@ -255,37 +255,20 @@ def register_routes():
 
 
 @hookimpl
-async def extra_body_script(
-    template, database, table, columns, view_name, request, datasette
-):
-    if not request or not await datasette.permission_allowed(
-        request.actor, PERMISSION_EDIT_METADATA, default=False
-    ):
-        return ""
-    if view_name == "index":
-        url = "/-/datasette-metadata-editable/edit?"
-        return f"""
-          const editMetadata = document.createElement("a")
-          editMetadata.textContent = "Edit metadata"
-          editMetadata.setAttribute('href', {json.dumps(url)})
-
-          const metadataElement = document.querySelector('.metadata-description');
-          if(metadataElement)
-              metadataElement.appendChild(editMetadata)
-          else
-            (document.querySelector('.page-header') || document.querySelector('h1')).after(editMetadata)
-        """
-    return ""
-
-
-@hookimpl
-def extra_js_urls(template, database, table, columns, view_name, request, datasette):
-    if view_name in {"table", "query", "database"}:
+def homepage_actions(datasette, actor):
+    async def inner():
+        if not await datasette.permission_allowed(
+            actor, PERMISSION_EDIT_METADATA, default=False
+        ):
+            return []
         return [
-            datasette.urls.path(
-                "/-/static-plugins/datasette-metadata-editable/plugin.js"
-            )
+            {
+                "href": datasette.urls.path("/-/datasette-metadata-editable/edit"),
+                "label": "Edit instance metadata",
+            }
         ]
+
+    return inner
 
 
 @hookimpl
