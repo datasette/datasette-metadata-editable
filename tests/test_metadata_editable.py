@@ -14,12 +14,47 @@ async def test_plugin_is_installed():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_url",
+    (
+        ("/", "/-/datasette-metadata-editable/edit"),
+        (
+            "/test_action_menus",
+            "/-/datasette-metadata-editable/edit?db=test_action_menus",
+        ),
+        (
+            "/test_action_menus/foo",
+            "/-/datasette-metadata-editable/edit?db=test_action_menus&amp;table=foo",
+        ),
+    ),
+)
+async def test_action_menus(path, expected_url):
+    datasette = Datasette(
+        config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
+    )
+    db = datasette.add_memory_database("test_action_menus")
+    await db.execute_write("create table if not exists foo (id integer primary key)")
+    fragment = '"{}"'.format(expected_url)
+    # Anonymous
+    anon_response = await datasette.client.get(path)
+    assert fragment not in anon_response.text
+    # User but not the root user
+    user_response = await datasette.client.get(
+        path, cookies={"ds_actor": datasette.client.actor_cookie({"id": "user"})}
+    )
+    assert fragment not in user_response.text
+    # root user
+    root_response = await datasette.client.get(
+        path, cookies={"ds_actor": datasette.client.actor_cookie({"id": "root"})}
+    )
+    assert fragment in root_response.text
+
+
+@pytest.mark.asyncio
 async def test_basic(snapshot):
     datasette = Datasette(
         memory=True,
-        metadata={
-            "permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}
-        },
+        config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
     )
     assert datasette.metadata("title") is None
 
@@ -62,9 +97,7 @@ async def test_basic(snapshot):
 async def test_edit_table():
     datasette = Datasette(
         memory=True,
-        metadata={
-            "permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}
-        },
+        config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
     )
     db = datasette.add_memory_database("test-db-with-hyphens")
     await db.execute_write(
@@ -172,9 +205,7 @@ async def test_metadata_survives_server_restart(tmpdir):
         sqlite_utils.Database(path).vacuum()
     datasette = Datasette(
         [one, two],
-        metadata={
-            "permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}
-        },
+        config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
         internal=internal,
     )
     db = datasette.get_database("one")
@@ -218,9 +249,7 @@ async def test_metadata_survives_server_restart(tmpdir):
     # Now restart the server
     datasette2 = Datasette(
         [one, two],
-        metadata={
-            "permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}
-        },
+        config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
         internal=internal,
         pdb=True,
     )
