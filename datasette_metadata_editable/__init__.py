@@ -264,6 +264,7 @@ def homepage_actions(datasette, actor):
             {
                 "href": datasette.urls.path("/-/datasette-metadata-editable/edit"),
                 "label": "Edit instance metadata",
+                "description": "Set the title and description for this instance",
             }
         ]
 
@@ -283,6 +284,7 @@ def database_actions(datasette, actor, database):
                     f"/-/datasette-metadata-editable/edit?db={database}"
                 ),
                 "label": "Edit database metadata",
+                "description": "Set the description, source and license for this database",
             }
         ]
 
@@ -302,6 +304,7 @@ def table_actions(datasette, actor, database, table):
                     f"/-/datasette-metadata-editable/edit?db={database}&table={table}"
                 ),
                 "label": "Edit table metadata",
+                "description": "Set the description, source and license for this table",
             }
         ]
 
