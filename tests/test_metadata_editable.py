@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 from datasette_metadata_editable import internal_migrations
+import json
 import pytest
 import sqlite_utils
 
@@ -316,3 +317,133 @@ async def test_migrations():
             }
         ],
     }
+
+
+@pytest.mark.asyncio
+async def test_edit_history_is_recorded(tmpdir):
+    internal = str(tmpdir / "internal.db")
+    db_path = str(tmpdir / "test.db")
+    sqlite_utils.Database(db_path).vacuum()
+    datasette = Datasette(
+        [db_path],
+        config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
+        internal=internal,
+    )
+    await datasette.refresh_schemas()
+    db = datasette.get_database("test")
+    await db.execute_write("create table t(id integer primary key)")
+    cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
+    response = await datasette.client.get(
+        "/-/datasette-metadata-editable/edit", cookies=cookies
+    )
+    csrftoken = response.cookies["ds_csrftoken"]
+    cookies["ds_csrftoken"] = csrftoken
+
+    # Make an edit
+    response2 = await datasette.client.post(
+        "/-/datasette-metadata-editable/api/edit",
+        cookies=cookies,
+        data={
+            "csrftoken": csrftoken,
+            "target_type": "database",
+            "_database": "test",
+            "description_markdown": "**DESCRIBED!**",
+        },
+    )
+    assert response2.status_code == 302
+
+    # Check the edit history was recorded
+    sqlite_db = sqlite_utils.Database(internal)
+    history = list(sqlite_db["datasette_metadata_editable_history"].rows)
+    assert len(history) == 1
+    assert history[0]["target_type"] == "database"
+    assert history[0]["database_name"] == "test"
+    assert history[0]["actor_id"] == "root"
+    assert json.loads(history[0]["fields_json"]) == {
+        "target_type": "database",
+        "_database": "test",
+        "description_markdown": "**DESCRIBED!**",
+    }
+
+    # Now make a second edit
+    response3 = await datasette.client.post(
+        "/-/datasette-metadata-editable/api/edit",
+        cookies=cookies,
+        data={
+            "csrftoken": csrftoken,
+            "target_type": "database",
+            "_database": "test",
+            "description_markdown": "Something else",
+        },
+    )
+    assert response3.status_code == 302
+
+    # Check the edit history was updated
+    sqlite_db = sqlite_utils.Database(internal)
+    history = list(sqlite_db["datasette_metadata_editable_history"].rows)
+    assert len(history) == 2
+    assert history[1]["target_type"] == "database"
+    assert history[1]["database_name"] == "test"
+    assert history[1]["actor_id"] == "root"
+    assert json.loads(history[1]["fields_json"]) == {
+        "target_type": "database",
+        "_database": "test",
+        "description_markdown": "Something else",
+    }
+
+    # Now visit the edit page again - the markdown should be pre-filled
+    response4 = await datasette.client.get(
+        "/-/datasette-metadata-editable/edit?db=test", cookies=cookies
+    )
+    assert (
+        '<textarea id="description_markdown" name="description_markdown" cols="80" rows="4">Something else</textarea>'
+        in response4.text
+    )
+
+
+@pytest.mark.asyncio
+async def test_edit_history_is_used_to_prefill_form(tmpdir):
+    internal = str(tmpdir / "internal.db")
+    db_path = str(tmpdir / "test.db")
+    sqlite_utils.Database(db_path).vacuum()
+    datasette = Datasette(
+        [db_path],
+        config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
+        internal=internal,
+    )
+    await datasette.refresh_schemas()
+    db = datasette.get_database("test")
+    await db.execute_write("create table t(id integer primary key)")
+    cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
+
+    csrf_response = await datasette.client.get(
+        "/-/datasette-metadata-editable/edit", cookies=cookies
+    )
+    csrftoken = csrf_response.cookies["ds_csrftoken"]
+    cookies["ds_csrftoken"] = csrftoken
+
+    # Make an edit - but just of the description_markdown
+    response = await datasette.client.post(
+        "/-/datasette-metadata-editable/api/edit",
+        cookies=cookies,
+        data={
+            "csrftoken": csrftoken,
+            "target_type": "database",
+            "_database": "test",
+            "description_markdown": "**DESCRIBED!**",
+        },
+    )
+    assert response.status_code == 302
+
+    # This should be rendered as HTML on that database page
+    response2 = await datasette.client.get("/test")
+    assert "<strong>DESCRIBED!</strong>" in response2.text
+
+    # Now visit the edit page - the markdown should be pre-filled
+    response3 = await datasette.client.get(
+        "/-/datasette-metadata-editable/edit?db=test", cookies=cookies
+    )
+    assert (
+        '<textarea id="description_markdown" name="description_markdown" cols="80" rows="4">**DESCRIBED!**</textarea>'
+        in response3.text
+    )
