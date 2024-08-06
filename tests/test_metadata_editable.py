@@ -1,5 +1,5 @@
 from datasette.app import Datasette
-from datasette_metadata_editable.internal_migrations import internal_migrations
+from datasette_metadata_editable import internal_migrations
 import pytest
 import sqlite_utils
 
@@ -164,7 +164,7 @@ async def test_metadata_does_not_cause_500_errors(tmpdir):
 
     internal_db = sqlite_utils.Database(internal)
     # Run migrations to create tables
-    internal_migrations.apply(internal_db)
+    internal_migrations.internal_migrations.apply(internal_db)
 
     internal_db.executescript(bad_rows)
 
@@ -239,3 +239,80 @@ async def test_metadata_survives_server_restart(tmpdir):
     root_response = await datasette2.client.get("/")
     assert root_response.status_code == 200
     assert "DESCRIBED" in (await datasette2.client.get("/one")).text
+
+
+@pytest.mark.asyncio
+async def test_migrations():
+    datasette = Datasette()
+    await datasette.refresh_schemas()
+    internal_db = datasette.get_internal_database()
+    await internal_db.execute_write_fn(
+        lambda conn: internal_migrations.m001_initialize_datasette_metadata_editable(
+            sqlite_utils.Database(conn)
+        )
+    )
+    internal_tables = await internal_db.table_names()
+    assert set(internal_tables) == {
+        "catalog_databases",
+        "catalog_tables",
+        "catalog_columns",
+        "catalog_indexes",
+        "catalog_foreign_keys",
+        "metadata_instance",
+        "metadata_databases",
+        "metadata_resources",
+        "metadata_columns",
+        "datasette_metadata_editable_entries",
+    }
+    # Now insert a bunch of fake edits
+    await internal_db.execute_write(
+        """
+        insert into datasette_metadata_editable_entries
+        (target_type, target_database, target_table, target_column, key, value)
+        values
+        ('instance', '', '', '', 'title', 'Hello'),
+        ('database', 'db1', '', '', 'title', 'DB1'),
+        ('table', 'db1', 'table1', '', 'title', 'Table 1'),
+        ('column', 'db1', 'table1', 'column1', 'title', 'Column 1')
+    """
+    )
+    # Run the second migration
+    await internal_db.execute_write_fn(
+        lambda conn: internal_migrations.m002_migrate_datasette_metadata_editable_to_system_tables(
+            sqlite_utils.Database(conn)
+        )
+    )
+
+    # Check the entries have been moved
+    def get_all(conn):
+        db = sqlite_utils.Database(conn)
+        return {
+            table: list(db[table].rows)
+            for table in db.table_names()
+            if table.startswith("metadata_")
+        }
+
+    fetched = await internal_db.execute_fn(get_all)
+    assert fetched == {
+        "metadata_instance": [],
+        "metadata_databases": [
+            {"database_name": "db1", "key": "title", "value": "DB1"}
+        ],
+        "metadata_resources": [
+            {
+                "database_name": "db1",
+                "resource_name": "table1",
+                "key": "title",
+                "value": "Table 1",
+            }
+        ],
+        "metadata_columns": [
+            {
+                "database_name": "db1",
+                "resource_name": "table1",
+                "column_name": "column1",
+                "key": "title",
+                "value": "Column 1",
+            }
+        ],
+    }
