@@ -5,7 +5,7 @@
 [![Tests](https://github.com/datasette/datasette-metadata-editable/workflows/Test/badge.svg)](https://github.com/datasette/datasette-metadata-editable/actions?query=workflow%3ATest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/datasette/datasette-metadata-editable/blob/main/LICENSE)
 
-A Datasette plugin for editing metadata.
+A Datasette plugin for editing instance, database and table metadata. Currently requires [Datasette 1.0a14](https://docs.datasette.io/en/latest/changelog.html#a14-2024-08-05) or higher.
 
 ## Installation
 
