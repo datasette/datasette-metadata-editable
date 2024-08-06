@@ -1,6 +1,10 @@
+import datetime
 import markdown2
 import nh3
 from datasette import Response, hookimpl, Permission, Forbidden
+import json
+from sqlite_utils import Database
+from .internal_migrations import migrations
 
 from functools import wraps
 
@@ -37,6 +41,39 @@ def resolve_value(data, field):
     return data.get(field)
 
 
+async def log_edit(
+    datasette, target_type, database, table, column, actor_id, fields: dict
+):
+    internal_db = datasette.get_internal_database()
+    sql = """
+    insert into datasette_metadata_editable_history
+        (target_type, database_name, resource_name, column_name, actor_id, updated_at, fields_json)
+            values
+        (:target_type, {database_name}, {resource_name}, {column_name}, {actor_id}, :updated_at, :fields_json)
+    """.format(
+        database_name=database and ":database_name" or "null",
+        resource_name=table and ":resource_name" or "null",
+        column_name=column and ":column_name" or "null",
+        actor_id=actor_id and ":actor_id" or "null",
+    )
+    await internal_db.execute_write(
+        sql,
+        {
+            "target_type": target_type,
+            "database_name": database,
+            "resource_name": table,
+            "column_name": column,
+            "actor_id": actor_id,
+            "updated_at": datetime.datetime.now().isoformat(),
+            "fields_json": json.dumps(
+                dict(
+                    (key, value) for key, value in fields.items() if key != "csrftoken"
+                )
+            ),
+        },
+    )
+
+
 class Routes:
     @check_permission()
     async def edit_page(scope, receive, datasette, request):
@@ -52,6 +89,8 @@ class Routes:
             target_type = "table"
         else:
             target_type = "instance"
+
+        # TODO: Check latest datasette_metadata_editable_history for markdown description
 
         if target_type == "instance":
             defaults = await datasette.get_instance_metadata()
@@ -82,6 +121,9 @@ class Routes:
         redirect_url = None
         message = None
         target_type = data.get("target_type")
+        actor_id = None
+        if request.actor:
+            actor_id = request.actor.get("id")
         if target_type == "instance":
             for field in [
                 "title",
@@ -92,6 +134,15 @@ class Routes:
                 "license_url",
             ]:
                 await datasette.set_instance_metadata(field, resolve_value(data, field))
+            await log_edit(
+                datasette,
+                target_type=target_type,
+                database=None,
+                table=None,
+                column=None,
+                actor_id=actor_id,
+                fields=data,
+            )
             message = "Metadata updated"
             redirect_url = datasette.urls.instance()
         elif target_type == "database":
@@ -106,6 +157,15 @@ class Routes:
                 await datasette.set_database_metadata(
                     database, field, resolve_value(data, field)
                 )
+            await log_edit(
+                datasette,
+                target_type=target_type,
+                database=database,
+                table=None,
+                column=None,
+                actor_id=actor_id,
+                fields=data,
+            )
             message = "Database metadata updated"
             redirect_url = datasette.urls.database(database)
         elif target_type == "table":
@@ -121,6 +181,15 @@ class Routes:
                 await datasette.set_resource_metadata(
                     database, table, field, resolve_value(data, field)
                 )
+            await log_edit(
+                datasette,
+                target_type=target_type,
+                database=database,
+                table=table,
+                column=None,
+                actor_id=actor_id,
+                fields=data,
+            )
             message = "Table metadata updated"
             redirect_url = datasette.urls.table(database, table)
         elif target_type == "column":
@@ -137,6 +206,15 @@ class Routes:
                 await datasette.set_column_metadata(
                     database, table, column, field, resolve_value(data, field)
                 )
+            await log_edit(
+                datasette,
+                target_type=target_type,
+                database=None,
+                table=table,
+                column=column,
+                actor_id=actor_id,
+                fields=data,
+            )
             message = "Column metadata updated"
             redirect_url = datasette.urls.table(database, table)
         if not redirect_url:
@@ -223,5 +301,18 @@ def table_actions(datasette, actor, database, table):
                 "description": "Set the description, source and license for this table",
             }
         ]
+
+    return inner
+
+
+@hookimpl
+def startup(datasette):
+    async def inner():
+        def migrate(connection):
+            with connection:
+                db = Database(connection)
+                migrations.apply(db)
+
+        await datasette.get_internal_database().execute_write_fn(migrate, block=True)
 
     return inner

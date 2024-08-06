@@ -1,11 +1,10 @@
 from sqlite_utils import Database
 from sqlite_migrate import Migrations
-from pathlib import Path
 
-internal_migrations = Migrations("datasette-metadata-editable.internal")
+migrations = Migrations("datasette-metadata-editable.internal")
 
 
-@internal_migrations()
+@migrations()
 def m001_initialize_datasette_metadata_editable(db: Database):
     db.executescript(
         """
@@ -27,7 +26,7 @@ def m001_initialize_datasette_metadata_editable(db: Database):
     )
 
 
-@internal_migrations()
+@migrations()
 def m002_migrate_datasette_metadata_editable_to_system_tables(db: Database):
     if (
         db["datasette_metadata_editable_entries"].exists()
@@ -70,3 +69,23 @@ def m002_migrate_datasette_metadata_editable_to_system_tables(db: Database):
                     }
                 )
         db["datasette_metadata_editable_entries"].drop()
+
+
+@migrations()
+def m003_edit_history_table(db: Database):
+    table = db["datasette_metadata_editable_history"].create(
+        {
+            "id": int,
+            "target_type": str,
+            "database_name": str,
+            "resource_name": str,
+            "column_name": str,
+            "actor_id": str,
+            "updated_at": str,
+            "fields_json": str,
+        },
+        pk="id",
+    )
+    table.create_index(
+        ["target_type", "database_name", "resource_name", "column_name", "updated_at"]
+    )

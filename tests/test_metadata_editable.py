@@ -164,7 +164,7 @@ async def test_metadata_does_not_cause_500_errors(tmpdir):
 
     internal_db = sqlite_utils.Database(internal)
     # Run migrations to create tables
-    internal_migrations.internal_migrations.apply(internal_db)
+    internal_migrations.migrations.apply(internal_db)
 
     internal_db.executescript(bad_rows)
 
