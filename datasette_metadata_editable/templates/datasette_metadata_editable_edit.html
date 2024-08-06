@@ -7,11 +7,11 @@
 
 <h1>Editing
   {% if   target_type == "index" %}  Root-level
-  {% elif target_type == "database" %}  <a href="#TODO">{{database}}</a>
-  {% elif target_type == "table" %}  <a href="#TODO">{{database}}/{{table}}</a>
-  {% elif target_type == "index" %}  <a href="#TODO">{{database}}/{{table}}/{{column}}</a>
+  {% elif target_type == "database" %}  <a href="{{ urls.database(database) }}">{{ database }}</a>
+  {% elif target_type == "table" %}  <a href="{{ urls.table(database, table) }}">{{ database }}/{{ table }}</a>
+  {% elif target_type == "column" %}  <a href="{{ urls.table(database, table) }}">{{ database }}/{{ table }}/{{ column }}</a>
 {% endif %}
-Metadata </h1>
+metadata</h1>
 
 <form action="/-/datasette-metadata-editable/api/edit" method="post">
 
