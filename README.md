@@ -27,6 +27,16 @@ datasette --internal internal.db
 
 Users with the `datasette-metadata-editable-edit` permission will see action menu items for editing the metadata attached to the instance, a database or a table.
 
+An easy way to test the plugin is like this, which will allow even logged out users to edit metadata:
+
+```bash
+datasette --internal internal.db -s permissions.datasette-metadata-editable-edit true
+```
+Or to restrict edits to the `root` user:
+```bash
+datasette --internal internal.db -s permissions.datasette-metadata-editable-edit.id root --root
+```
+
 ## Development
 
 To set up this plugin locally, first checkout the code. Then create a new virtual environment:
