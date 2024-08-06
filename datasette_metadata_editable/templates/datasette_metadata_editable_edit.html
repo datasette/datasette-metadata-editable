@@ -13,8 +13,7 @@
 {% endif %}
 metadata</h1>
 
-<form action="/-/datasette-metadata-editable/api/edit" method="post">
-
+<form action="{{ urls.path("/-/datasette-metadata-editable/api/edit") }}" method="post">
   {% if target_type == "index" %}
   <div>
     <label for="title">Title</label><br/>
@@ -24,46 +23,42 @@ metadata</h1>
 
   <div>
     <label for="description_html">Description</label><br/>
-    <textarea id="description_html" name="description_html" cols="80" rows="4">{{defaults.get("description_html") or ""}}</textarea>
+    <textarea id="description_html" name="description_html" cols="80" rows="4">{{ defaults.get("description_html") or "" }}</textarea>
   </div>
 
   <div>
     <label for="license">License</label><br/>
-    <input type="text" id="license" name="license" value="{{defaults.get("license") or ""}}">
+    <input type="text" id="license" name="license" value="{{ defaults.get("license") or "" }}">
   </div>
 
   <div>
     <label for="license_url">License URL</label><br/>
-    <input type="text" id="license_url" name="license_url" value="{{defaults.get("license_url") or ""}}">
+    <input type="text" id="license_url" name="license_url" value="{{ defaults.get("license_url") or "" }}">
   </div>
 
   <div>
     <label for="source">Source</label><br/>
-    <input type="text" id="source" name="source" value="{{defaults.get("source") or ""}}">
+    <input type="text" id="source" name="source" value="{{ defaults.get("source") or "" }}">
   </div>
 
   <div>
     <label for="source_url">Source URL</label><br/>
-    <input type="text" id="source_url" name="source_url" value="{{defaults.get("source_url") or ""}}">
+    <input type="text" id="source_url" name="source_url" value="{{ defaults.get("source_url") or "" }}">
   </div>
 
-
-  <input type="hidden" name="target_type" value="{{target_type}}">
+  <input type="hidden" name="target_type" value="{{ target_type }}">
 
   {% if target_type == "database" or target_type == "table" or target_type == "column"%}
-  <input type="hidden" name="_database" value="{{database}}">
+  <input type="hidden" name="_database" value="{{ database }}">
   {% endif %}
   {% if target_type == "table" or target_type == "column"%}
-  <input type="hidden" name="_table" value="{{table}}">
+  <input type="hidden" name="_table" value="{{ table }}">
   {% endif %}
   {% if target_type == "column"%}
-  <input type="hidden" name="_column" value="{{column}}">
+  <input type="hidden" name="_column" value="{{ column }}">
   {% endif %}
-
   <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
-
   <br/>
   <input type="submit" value="Submit">
 </form>
-
 {% endblock %}
