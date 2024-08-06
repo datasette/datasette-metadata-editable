@@ -5,7 +5,7 @@
 [![Tests](https://github.com/datasette/datasette-metadata-editable/workflows/Test/badge.svg)](https://github.com/datasette/datasette-metadata-editable/actions?query=workflow%3ATest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/datasette/datasette-metadata-editable/blob/main/LICENSE)
 
-A Datasette plugin for editing metadata on-the-fly. Work in progress.
+A Datasette plugin for editing metadata.
 
 ## Installation
 
@@ -17,7 +17,15 @@ datasette install datasette-metadata-editable
 
 ## Usage
 
-Usage instructions go here.
+This plugin _must_ be used with a persistent `internal.db` database. If you don't configure Datasette in this way any changes made to metadata will be lost when the server restarts.
+
+Be sure to start Datasette something like this:
+
+```bash
+datasette --internal internal.db
+```
+
+Users with the `datasette-metadata-editable-edit` permission will see action menu items for editing the metadata attached to the instance, a database or a table.
 
 ## Development
 

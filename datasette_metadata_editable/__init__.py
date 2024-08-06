@@ -1,17 +1,10 @@
-import sqlite3
-
 import markdown2
 import nh3
 from datasette import Response, hookimpl, Permission, Forbidden
-from sqlite_utils import Database
-from typing import Optional
 
-from .internal_migrations import internal_migrations
 from functools import wraps
 
 PERMISSION_EDIT_METADATA = "datasette-metadata-editable-edit"
-
-cache = {}
 
 
 # decorator for routes, to ensure the proper permissions are checked
@@ -38,70 +31,10 @@ def md_to_html(md: str):
     return nh3.clean(raw_html)
 
 
-async def insert_index_entry(db, cache, key, value):
-    return await insert_entry(db, cache, "index", None, None, None, key, value)
-
-
-async def insert_database_entry(db, cache, database, key, value):
-    return await insert_entry(db, cache, "database", database, None, None, key, value)
-
-
-async def insert_table_entry(db, cache, database, table, key, value):
-    return await insert_entry(db, cache, "table", database, table, None, key, value)
-
-
-async def insert_column_entry(db, cache, database, table, column, key, value):
-    return await insert_entry(db, cache, "column", database, table, column, key, value)
-
-
-async def insert_entry(
-    db,
-    cache,
-    target_type: str,
-    target_database: Optional[str],
-    target_table: Optional[str],
-    target_column: Optional[str],
-    key: str,
-    value: Optional[str],
-):
-    if target_type == "index":
-        cache[key] = md_to_html(value) if key.endswith("_html") else value
-    elif target_type == "database":
-        cache.setdefault("databases", {}).setdefault(target_database, {})[key] = (
-            md_to_html(value) if key.endswith("_html") else value
-        )
-    elif target_type == "table":
-        cache.setdefault("databases", {}).setdefault(target_database, {}).setdefault(
-            "tables", {}
-        ).setdefault(target_table, {})[key] = (
-            md_to_html(value) if key.endswith("_html") else value
-        )
-    elif target_type == "column":
-        cache.setdefault("databases", {}).setdefault(target_database, {}).setdefault(
-            "tables", {}
-        ).setdefault(target_table, {}).setdefault("columns", {})[key] = (
-            md_to_html(value) if key.endswith("_html") else value
-        )
-
-    return await db.execute_write(
-        """
-        INSERT INTO datasette_metadata_editable_entries(target_type, target_database, target_table, target_column, key, value)
-        VALUES (:target_type, :target_database, :target_table, :target_column, :key, :value)
-        ON CONFLICT(target_type, target_database, target_table, target_column, key)
-          DO UPDATE SET value = :value
-
-      """,
-        {
-            "target_type": target_type,
-            # Empty strings are added here because UNIQUE indexes in SQLite see NULLs
-            # as distinct from one-another. So, use an empty string to enforce uniqueness
-            "target_database": target_database or "",
-            "target_table": target_table or "",
-            "target_column": target_column or "",
-            "key": key,
-            "value": value,
-        },
-    )
+def resolve_value(data, field):
+    if field == "description_html":
+        return md_to_html(data.get(field))
+    return data.get(field)
 
 
 class Routes:
@@ -118,21 +51,16 @@ class Routes:
         elif db and table:
             target_type = "table"
         else:
-            target_type = "index"
+            target_type = "instance"
 
-        if target_type == "index":
-            defaults = cache or {}
-        if target_type == "database":
-            defaults = (cache.get("databases") or {}).get(db) or {}
-        if target_type == "table":
-            defaults = (
-                ((cache.get("databases") or {}).get(db) or {}).get("tables") or {}
-            ).get(table) or {}
-        if target_type == "column":
-            table = (
-                ((cache.get("databases") or {}).get(db) or {}).get("tables") or {}
-            ).get(table) or {}
-            defaults = {"description": (table.get("columns") or {}).get(column)} or {}
+        if target_type == "instance":
+            defaults = await datasette.get_instance_metadata()
+        elif target_type == "database":
+            defaults = await datasette.get_database_metadata(db)
+        elif target_type == "table":
+            defaults = await datasette.get_resource_metadata(db, table)
+        elif target_type == "column":
+            defaults = await datasette.get_column_metadata(db, table, column)
         return Response.html(
             await datasette.render_template(
                 "datasette_metadata_editable_edit.html",
@@ -151,79 +79,62 @@ class Routes:
     async def api_edit(scope, receive, datasette, request):
         assert request.method == "POST"
         data = await request.post_vars()
-        internal_db = datasette.get_internal_database()
 
         target_type = data.get("target_type")
-        if target_type == "index":
-            for field in ["title", "description_html", "source", "license"]:
-                await insert_index_entry(internal_db, cache, field, data.get(field))
-            return Response.redirect("/")
-
+        if target_type == "instance":
+            for field in [
+                "title",
+                "description_html",
+                "source",
+                "license",
+                "source_url",
+                "license_url",
+            ]:
+                await datasette.set_instance_metadata(field, resolve_value(data, field))
+            return Response.redirect(datasette.urls.instance())
         elif target_type == "database":
             database = data.get("_database")
-            for field in ["description_html", "source", "license"]:
-                await insert_database_entry(
-                    internal_db, cache, database, field, data.get(field)
+            for field in [
+                "description_html",
+                "source",
+                "license",
+                "source_url",
+                "license_url",
+            ]:
+                await datasette.set_database_metadata(
+                    database, field, resolve_value(data, field)
                 )
-            return Response.redirect(f"/{database}")
+            return Response.redirect(datasette.urls.database(database))
         elif target_type == "table":
             database = data.get("_database")
             table = data.get("_table")
-            for field in ["description_html", "source", "license"]:
-                await insert_table_entry(
-                    internal_db, cache, database, table, field, data.get(field)
+            for field in [
+                "description_html",
+                "source",
+                "license",
+                "source_url",
+                "license_url",
+            ]:
+                await datasette.set_resource_metadata(
+                    database, table, field, resolve_value(data, field)
                 )
-            return Response.redirect(f"/{database}/{table}")
+            return Response.redirect(datasette.urls.table(database, table))
         elif target_type == "column":
             database = data.get("_database")
             table = data.get("_table")
             column = data.get("_column")
-            for field in ["description_html", "source", "license"]:
-                await insert_column_entry(
-                    internal_db, cache, database, table, column, field, data.get(field)
+            for field in [
+                "description_html",
+                "source",
+                "license",
+                "source_url",
+                "license_url",
+            ]:
+                await datasette.set_column_metadata(
+                    database, table, column, field, resolve_value(data, field)
                 )
-            return Response.redirect(f"/{database}/{table}")
+            return Response.redirect(datasette.urls.table(database, table))
         return Response.html("error", status=400)
-
-
-@hookimpl
-def startup(datasette):
-    async def inner():
-        # UPSERT was added in SQLite 3.24.0 https://www.sqlite.org/changes.html#version_3_24_0
-        # For now, enforce clients have a supported version
-        if sqlite3.sqlite_version_info[1] < 24:
-            raise Exception(
-                f"SQLite version >=3.24 is required, has {sqlite3.sqlite_version}"
-            )
-
-        def migrate(connection):
-            with connection:
-                db = Database(connection)
-                internal_migrations.apply(db)
-
-        await datasette.get_internal_database().execute_write_fn(migrate, block=True)
-        try:
-            for row in await datasette.get_internal_database().execute(
-                "select * from datasette_metadata_editable_entries"
-            ):
-                if row["target_type"] == "index":
-                    cache[row["key"]] = row["value"]
-                elif row["target_type"] == "table":
-                    cache.setdefault("databases", {}).setdefault(
-                        row["target_database"], {}
-                    ).setdefault("tables", {}).setdefault(row["target_table"], {})[
-                        row["key"]
-                    ] = row[
-                        "value"
-                    ]
-                    cache[row["key"]] = row["value"]
-                # TODO: database, column
-        except Exception as e:
-            print(
-                f"Exception while sourcing from datasette_metadata_editable_entries at startup: {e}"
-            )
-
-    return inner
 
 
 @hookimpl
@@ -238,11 +149,6 @@ def register_permissions(datasette):
             default=False,
         ),
     ]
-
-
-@hookimpl
-def get_metadata(datasette, key, database, table):
-    return cache
 
 
 @hookimpl

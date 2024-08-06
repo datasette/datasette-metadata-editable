@@ -32,6 +32,7 @@ async def test_action_menus(path, expected_url):
     datasette = Datasette(
         config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
     )
+    await datasette.refresh_schemas()
     db = datasette.add_memory_database("test_action_menus")
     await db.execute_write("create table if not exists foo (id integer primary key)")
     fragment = '"{}"'.format(expected_url)
@@ -51,12 +52,13 @@ async def test_action_menus(path, expected_url):
 
 
 @pytest.mark.asyncio
-async def test_basic(snapshot):
+async def test_basic():
     datasette = Datasette(
         memory=True,
         config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
     )
-    assert datasette.metadata("title") is None
+    await datasette.refresh_schemas()
+    assert (await datasette.get_instance_metadata()).get("title") is None
 
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     response = await datasette.client.get(
@@ -68,29 +70,17 @@ async def test_basic(snapshot):
     await datasette.client.post(
         "/-/datasette-metadata-editable/api/edit",
         cookies=cookies,
-        data={"csrftoken": csrftoken, "target_type": "index", "title": "yo"},
+        data={"csrftoken": csrftoken, "target_type": "instance", "title": "yo"},
     )
 
-    async def all_entries():
-        return [
-            dict(row)
-            for row in (
-                await datasette.get_internal_database().execute(
-                    "select * from datasette_metadata_editable_entries"
-                )
-            ).rows
-        ]
-
-    assert datasette.metadata("title") == "yo"
-    assert await all_entries() == snapshot(name="entry rows initial")
+    assert (await datasette.get_instance_metadata())["title"] == "yo"
 
     await datasette.client.post(
         "/-/datasette-metadata-editable/api/edit",
         cookies=cookies,
-        data={"csrftoken": csrftoken, "target_type": "index", "title": "yo2"},
+        data={"csrftoken": csrftoken, "target_type": "instance", "title": "yo2"},
     )
-    assert datasette.metadata("title") == "yo2"
-    assert await all_entries() == snapshot(name="entry rows updated")
+    assert (await datasette.get_instance_metadata())["title"] == "yo2"
 
 
 @pytest.mark.asyncio
@@ -99,6 +89,7 @@ async def test_edit_table():
         memory=True,
         config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
     )
+    await datasette.refresh_schemas()
     db = datasette.add_memory_database("test-db-with-hyphens")
     await db.execute_write(
         "create table table_with_underscores (id integer primary key)"
@@ -108,14 +99,7 @@ async def test_edit_table():
             "/test-db-with-hyphens/table_with_underscores.json?_extra=metadata"
         )
     ).json()
-    assert metadata_before["metadata"] == {
-        "source": None,
-        "source_url": None,
-        "license": None,
-        "license_url": None,
-        "about": None,
-        "about_url": None,
-    }
+    assert metadata_before["metadata"] == {"columns": {}}
     # Now make the edit
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
     response = await datasette.client.get(
@@ -147,12 +131,11 @@ async def test_edit_table():
     ).json()
     assert metadata_after["metadata"] == {
         "description_html": "<p><b>New description</b></p>\n",
-        "source": "New source",
         "license": "MIT",
-        "source_url": None,
         "license_url": None,
-        "about": None,
-        "about_url": None,
+        "source": "New source",
+        "source_url": None,
+        "columns": {},
     }
 
 
@@ -189,6 +172,7 @@ async def test_metadata_does_not_cause_500_errors(tmpdir):
         [content],
         internal=internal,
     )
+    await datasette.refresh_schemas()
 
     # Server should not 500
     for path in ("/", "/content"):
@@ -208,6 +192,7 @@ async def test_metadata_survives_server_restart(tmpdir):
         config={"permissions": {"datasette-metadata-editable-edit": {"id": ["root"]}}},
         internal=internal,
     )
+    await datasette.refresh_schemas()
     db = datasette.get_database("one")
     await db.execute_write("create table t(id integer primary key)")
     cookies = {"ds_actor": datasette.sign({"a": {"id": "root"}}, "actor")}
@@ -231,19 +216,16 @@ async def test_metadata_survives_server_restart(tmpdir):
 
     # Check the metadata was stored
     sqlite_db = sqlite_utils.Database(internal)
-    assert list(
-        sqlite_db.query(
-            "select * from datasette_metadata_editable_entries where value != ''"
-        )
-    ) == [
+    assert [row for row in sqlite_db["metadata_databases"].rows] == [
         {
-            "target_type": "database",
-            "target_database": "one",
-            "target_table": "",
-            "target_column": "",
+            "database_name": "one",
             "key": "description_html",
-            "value": "DESCRIBED!",
-        }
+            "value": "<p>DESCRIBED!</p>\n",
+        },
+        {"database_name": "one", "key": "source", "value": None},
+        {"database_name": "one", "key": "license", "value": None},
+        {"database_name": "one", "key": "source_url", "value": None},
+        {"database_name": "one", "key": "license_url", "value": None},
     ]
 
     # Now restart the server
