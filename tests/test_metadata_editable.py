@@ -116,7 +116,7 @@ async def test_edit_table():
             "target_type": "table",
             "_database": "test-db-with-hyphens",
             "_table": "table_with_underscores",
-            "description_html": "<b>New description</b>",
+            "description_markdown": "<b>New description</b>",
             "license": "MIT",
             "source": "New source",
         },
@@ -209,7 +209,7 @@ async def test_metadata_survives_server_restart(tmpdir):
             "csrftoken": csrftoken,
             "target_type": "database",
             "_database": "one",
-            "description_html": "DESCRIBED!",
+            "description_markdown": "DESCRIBED!",
         },
     )
     assert response2.status_code == 302

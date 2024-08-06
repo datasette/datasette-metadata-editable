@@ -35,8 +35,12 @@ def md_to_html(md: str):
     return nh3.clean(raw_html)
 
 
+def resolve_field(field):
+    return "description_html" if field == "description_markdown" else field
+
+
 def resolve_value(data, field):
-    if field == "description_html":
+    if field == "description_markdown":
         return md_to_html(data.get(field))
     return data.get(field)
 
@@ -74,6 +78,42 @@ async def log_edit(
     )
 
 
+async def get_last_edit(datasette, target_type, database, table, column):
+    where_bits = ["target_type = :target_type"]
+    if database:
+        where_bits.append("database_name = :database_name")
+    if table:
+        where_bits.append("resource_name = :resource_name")
+    if column:
+        where_bits.append("column_name = :column_name")
+    sql = """
+    select * from datasette_metadata_editable_history
+    where {where_clause}
+    order by updated_at desc
+    limit 1
+    """.format(
+        where_clause=" and ".join(where_bits)
+    )
+    internal_db = datasette.get_internal_database()
+    result = await internal_db.execute(
+        sql,
+        {
+            "target_type": target_type,
+            "database_name": database,
+            "resource_name": table,
+            "column_name": column,
+        },
+    )
+    first = result.first()
+    if first:
+        row = dict(first)
+        if (row.get("fields_json") or "").strip().startswith("{"):
+            row["fields"] = json.loads(row["fields_json"])
+        return row
+    else:
+        return None
+
+
 class Routes:
     @check_permission()
     async def edit_page(scope, receive, datasette, request):
@@ -90,8 +130,6 @@ class Routes:
         else:
             target_type = "instance"
 
-        # TODO: Check latest datasette_metadata_editable_history for markdown description
-
         if target_type == "instance":
             defaults = await datasette.get_instance_metadata()
         elif target_type == "database":
@@ -100,6 +138,16 @@ class Routes:
             defaults = await datasette.get_resource_metadata(db, table)
         elif target_type == "column":
             defaults = await datasette.get_column_metadata(db, table, column)
+
+        # description_markdown is a special case, it comes from the edit log
+        last_edit = await get_last_edit(
+            datasette, target_type, database=db, table=table, column=column
+        )
+        if last_edit and last_edit["fields"].get("description_markdown"):
+            defaults["description_markdown"] = last_edit["fields"][
+                "description_markdown"
+            ]
+
         return Response.html(
             await datasette.render_template(
                 "datasette_metadata_editable_edit.html",
@@ -127,13 +175,15 @@ class Routes:
         if target_type == "instance":
             for field in [
                 "title",
-                "description_html",
+                "description_markdown",
                 "source",
                 "license",
                 "source_url",
                 "license_url",
             ]:
-                await datasette.set_instance_metadata(field, resolve_value(data, field))
+                await datasette.set_instance_metadata(
+                    resolve_field(field), resolve_value(data, field)
+                )
             await log_edit(
                 datasette,
                 target_type=target_type,
@@ -148,14 +198,14 @@ class Routes:
         elif target_type == "database":
             database = data.get("_database")
             for field in [
-                "description_html",
+                "description_markdown",
                 "source",
                 "license",
                 "source_url",
                 "license_url",
             ]:
                 await datasette.set_database_metadata(
-                    database, field, resolve_value(data, field)
+                    database, resolve_field(field), resolve_value(data, field)
                 )
             await log_edit(
                 datasette,
@@ -172,14 +222,14 @@ class Routes:
             database = data.get("_database")
             table = data.get("_table")
             for field in [
-                "description_html",
+                "description_markdown",
                 "source",
                 "license",
                 "source_url",
                 "license_url",
             ]:
                 await datasette.set_resource_metadata(
-                    database, table, field, resolve_value(data, field)
+                    database, table, resolve_field(field), resolve_value(data, field)
                 )
             await log_edit(
                 datasette,
@@ -197,14 +247,18 @@ class Routes:
             table = data.get("_table")
             column = data.get("_column")
             for field in [
-                "description_html",
+                "description_markdown",
                 "source",
                 "license",
                 "source_url",
                 "license_url",
             ]:
                 await datasette.set_column_metadata(
-                    database, table, column, field, resolve_value(data, field)
+                    database,
+                    table,
+                    column,
+                    resolve_field(field),
+                    resolve_value(data, field),
                 )
             await log_edit(
                 datasette,
