@@ -135,7 +135,7 @@ class Routes:
             defaults = {"description": (table.get("columns") or {}).get(column)} or {}
         return Response.html(
             await datasette.render_template(
-                "edit.html",
+                "datasette_metadata_editable_edit.html",
                 {
                     "target_type": target_type,
                     "defaults": defaults,
