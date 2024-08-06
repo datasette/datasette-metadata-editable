@@ -79,7 +79,8 @@ class Routes:
     async def api_edit(scope, receive, datasette, request):
         assert request.method == "POST"
         data = await request.post_vars()
-
+        redirect_url = None
+        message = None
         target_type = data.get("target_type")
         if target_type == "instance":
             for field in [
@@ -91,7 +92,8 @@ class Routes:
                 "license_url",
             ]:
                 await datasette.set_instance_metadata(field, resolve_value(data, field))
-            return Response.redirect(datasette.urls.instance())
+            message = "Metadata updated"
+            redirect_url = datasette.urls.instance()
         elif target_type == "database":
             database = data.get("_database")
             for field in [
@@ -104,7 +106,8 @@ class Routes:
                 await datasette.set_database_metadata(
                     database, field, resolve_value(data, field)
                 )
-            return Response.redirect(datasette.urls.database(database))
+            message = "Database metadata updated"
+            redirect_url = datasette.urls.database(database)
         elif target_type == "table":
             database = data.get("_database")
             table = data.get("_table")
@@ -118,7 +121,8 @@ class Routes:
                 await datasette.set_resource_metadata(
                     database, table, field, resolve_value(data, field)
                 )
-            return Response.redirect(datasette.urls.table(database, table))
+            message = "Table metadata updated"
+            redirect_url = datasette.urls.table(database, table)
         elif target_type == "column":
             database = data.get("_database")
             table = data.get("_table")
@@ -133,8 +137,14 @@ class Routes:
                 await datasette.set_column_metadata(
                     database, table, column, field, resolve_value(data, field)
                 )
-            return Response.redirect(datasette.urls.table(database, table))
-        return Response.html("error", status=400)
+            message = "Column metadata updated"
+            redirect_url = datasette.urls.table(database, table)
+        if not redirect_url:
+            return Response.html("error", status=400)
+        else:
+            if message:
+                datasette.add_message(request, message, type=datasette.INFO)
+            return Response.redirect(redirect_url)
 
 
 @hookimpl
