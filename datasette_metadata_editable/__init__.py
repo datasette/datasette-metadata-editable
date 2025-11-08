@@ -1,7 +1,8 @@
 import datetime
 import markdown2
 import nh3
-from datasette import Response, hookimpl, Permission, Forbidden
+from datasette import Response, hookimpl, Forbidden
+from datasette.permissions import Action
 import json
 from sqlite_utils import Database
 from .internal_migrations import migrations
@@ -16,8 +17,9 @@ def check_permission():
     def decorator(func):
         @wraps(func)
         async def wrapper(scope, receive, datasette, request):
-            result = await datasette.permission_allowed(
-                request.actor, PERMISSION_EDIT_METADATA, default=False
+            result = await datasette.allowed(
+                actor=request.actor,
+                action=PERMISSION_EDIT_METADATA,
             )
             if not result:
                 raise Forbidden(
@@ -280,15 +282,11 @@ class Routes:
 
 
 @hookimpl
-def register_permissions(datasette):
+def register_actions(datasette):
     return [
-        Permission(
+        Action(
             name=PERMISSION_EDIT_METADATA,
-            abbr=None,
             description="Ability to edit metadata",
-            takes_database=False,
-            takes_resource=False,
-            default=False,
         ),
     ]
 
@@ -304,8 +302,9 @@ def register_routes():
 @hookimpl
 def homepage_actions(datasette, actor):
     async def inner():
-        if not await datasette.permission_allowed(
-            actor, PERMISSION_EDIT_METADATA, default=False
+        if not await datasette.allowed(
+            actor=actor,
+            action=PERMISSION_EDIT_METADATA,
         ):
             return []
         return [
@@ -322,8 +321,9 @@ def homepage_actions(datasette, actor):
 @hookimpl
 def database_actions(datasette, actor, database):
     async def inner():
-        if not await datasette.permission_allowed(
-            actor, PERMISSION_EDIT_METADATA, default=False
+        if not await datasette.allowed(
+            actor=actor,
+            action=PERMISSION_EDIT_METADATA,
         ):
             return []
         return [
@@ -342,8 +342,9 @@ def database_actions(datasette, actor, database):
 @hookimpl
 def table_actions(datasette, actor, database, table):
     async def inner():
-        if not await datasette.permission_allowed(
-            actor, PERMISSION_EDIT_METADATA, default=False
+        if not await datasette.allowed(
+            actor=actor,
+            action=PERMISSION_EDIT_METADATA,
         ):
             return []
         return [

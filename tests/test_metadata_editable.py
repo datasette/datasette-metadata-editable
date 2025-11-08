@@ -257,6 +257,7 @@ async def test_migrations():
         "catalog_databases",
         "catalog_tables",
         "catalog_columns",
+        "catalog_views",
         "catalog_indexes",
         "catalog_foreign_keys",
         "metadata_instance",
